@@ -30,6 +30,7 @@ fun WelcomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .background(
                 Brush.linearGradient(
                     colors = listOf(

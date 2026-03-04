@@ -29,6 +29,7 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .background(Color(0xFF1C1C2E))
     ) {
         Column(

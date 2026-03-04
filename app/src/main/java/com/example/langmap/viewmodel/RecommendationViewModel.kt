@@ -147,7 +147,7 @@ class RecommendationViewModel : ViewModel() {
                 val url = "https://api.openai.com/v1/chat/completions"
 
                 val requestBody = mapOf(
-                    "model" to "gpt-4o-mini",
+                    "model" to "gpt-5",
                     "messages" to listOf(
                         mapOf(
                             "role" to "system",

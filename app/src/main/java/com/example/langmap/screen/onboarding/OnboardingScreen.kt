@@ -40,7 +40,10 @@ fun OnboardingScreen(
         return
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .statusBarsPadding()
+    ) {
         when (viewModel.pageIndex) {
             0 -> OnboardingPage1(viewModel)
             1 -> OnboardingPage2(viewModel)
