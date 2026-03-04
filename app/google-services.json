@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "152965737751",
+    "project_id": "langmap-363b9",
+    "storage_bucket": "langmap-363b9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:152965737751:android:c8e60753a8c30c31375b52",
+        "android_client_info": {
+          "package_name": "com.example.langmap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCE7tdXTDT4leAE--L2K-t4KxIhtUQtzz8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
