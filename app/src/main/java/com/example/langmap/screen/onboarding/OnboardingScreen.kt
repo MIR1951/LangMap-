@@ -816,7 +816,7 @@ fun OnboardingPage11(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedUnderstandingLevel.isNotEmpty()) {
-            viewModel.navigateToPage(12)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -833,7 +833,7 @@ fun OnboardingPage12(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer12 != null) {
-            viewModel.navigateToPage(13)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -850,7 +850,7 @@ fun OnboardingPage13(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer13 != null) {
-            viewModel.navigateToPage(14)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -867,7 +867,7 @@ fun OnboardingPage14(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer14 != null) {
-            viewModel.navigateToPage(15)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -884,7 +884,7 @@ fun OnboardingPage15(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer15 != null) {
-            viewModel.navigateToPage(16)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -901,7 +901,7 @@ fun OnboardingPage16(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer16 != null) {
-            viewModel.navigateToPage(17)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }
@@ -918,7 +918,7 @@ fun OnboardingPage17(viewModel: OnboardingViewModel) {
         )
         Spacer(modifier = Modifier.weight(1f))
         ContinueButton(enabled = viewModel.selectedAnswer17 != null) {
-            viewModel.navigateToPage(18)
+            viewModel.onNext()
         }
         Spacer(modifier = Modifier.height(20.dp))
     }

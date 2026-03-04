@@ -30,8 +30,7 @@ fun ProfileScreen(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("langmap_prefs", Context.MODE_PRIVATE)
-    val userName = prefs.getString("userName", "") ?: ""
+    val userName = viewModel.userName
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     if (showLogoutDialog) {

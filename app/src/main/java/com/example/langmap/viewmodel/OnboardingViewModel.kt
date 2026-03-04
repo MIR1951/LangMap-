@@ -81,7 +81,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     var showAuthView by mutableStateOf(false)
         private set
 
-    val totalPages = 30
+    val totalPages = 19
 
     init {
         loadSavedData()

@@ -8,12 +8,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("langmap_prefs", Context.MODE_PRIVATE)
     private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
 
     var userLevel by mutableStateOf("B1 - Intermediate")
+        private set
+
+    var userName by mutableStateOf("")
         private set
 
     var learningGoals by mutableStateOf(listOf<String>())
@@ -36,6 +41,41 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun fetchData() {
+        // Avval SharedPreferences'dan o'qish
+        loadFromPrefs()
+
+        // Keyin Firestore'dan yangilash (agar ma'lumot bo'sh bo'lsa yoki har doim)
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            db.collection("users").document(userId).get()
+                .addOnSuccessListener { document ->
+                    if (document != null && document.exists()) {
+                        val data = document.data ?: return@addOnSuccessListener
+                        
+                        userName = data["userName"] as? String ?: userName
+                        
+                        val selectedLevel = data["proficiency"] as? String ?: ""
+                        if (selectedLevel.isNotEmpty()) {
+                            userLevel = selectedLevel
+                        }
+
+                        val learningGoal = data["goal"] as? String ?: ""
+                        val studyTime = data["duration"] as? String ?: ""
+
+                        val goals = mutableListOf<String>()
+                        if (learningGoal.isNotEmpty()) goals.add(learningGoal)
+                        if (studyTime.isNotEmpty()) goals.add("$studyTime vaqt davomida o'rganish")
+                        goals.add("Kunlik 10 ta yangi so'z o'rganish")
+                        goals.add("Speaking mashqlarini bajarish")
+                        learningGoals = goals
+                    }
+                }
+        }
+    }
+
+    private fun loadFromPrefs() {
+        userName = prefs.getString("userName", "") ?: ""
+
         val selectedLevel = prefs.getString("selectedProficiency", "") ?: ""
         userLevel = if (selectedLevel.isEmpty()) "Yangi o'rganuvchi" else selectedLevel
 
