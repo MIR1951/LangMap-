@@ -143,7 +143,7 @@ class RecommendationViewModel : ViewModel() {
     private fun makeAIRequest(prompt: String) {
         viewModelScope.launch {
             try {
-                val apiKey = "YOUR_OPENAI_API_KEY" // Set your API key here
+                val apiKey = com.example.langmap.BuildConfig.OPENAI_API_KEY
                 val url = "https://api.openai.com/v1/chat/completions"
 
                 val requestBody = mapOf(
