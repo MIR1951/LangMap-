@@ -37,6 +37,9 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     var totalTasksToday by mutableStateOf(0)
         private set
 
+    var hasUnsavedChanges by mutableStateOf(false)
+        private set
+
     init {
         fetchData()
     }
@@ -113,17 +116,20 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleTask(taskId: String) {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val todayKey = getTodayKey()
-
-        // Lokalni yangilash
+        // Faqat lokal holat o'zgartiriladi — Firestore'ga yozilmaydi
         todayTasks = todayTasks.map { task ->
             if (task.id == taskId) task.copy(isCompleted = !task.isCompleted)
             else task
         }
         updateTaskCounts()
+        hasUnsavedChanges = true
+    }
 
-        // Firestore'da saqlash
+    fun saveChanges() {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val todayKey = getTodayKey()
+
+        // Firestore'ga saqlash
         saveTodayTasks(userId, todayKey, todayTasks)
 
         // Haftalik progressni yangilash
@@ -134,6 +140,8 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
         // Yutuqlarni tekshirish
         checkAchievements(userId)
+
+        hasUnsavedChanges = false
     }
 
     private fun saveTodayTasks(userId: String, todayKey: String, tasks: List<LearningTask>) {

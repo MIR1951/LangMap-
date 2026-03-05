@@ -18,7 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.langmap.ui.theme.Blue
@@ -43,7 +46,7 @@ fun HomeScreen(
                     userName = doc.getString("userName") ?: ""
                 }
         }
-        // Cache'dan foydalanadi, API'ga qayta so'rov yubormaslik
+        // Cache'dan foydalanadi (hasFetched bo'lsa hech narsa qilmaydi)
         viewModel.fetchRecommendation()
     }
 
@@ -209,7 +212,7 @@ fun RecommendationContent(recommendation: String) {
     val sectionEmojis = listOf("📚", "🎯", "📖", "📅", "💡", "🏆")
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        sections.forEachIndexed { index, (title, content) ->
+        sections.forEachIndexed { index, section ->
             val gradient = sectionColors[index % sectionColors.size]
             val emoji = sectionEmojis.getOrElse(index) { "📌" }
 
@@ -219,7 +222,7 @@ fun RecommendationContent(recommendation: String) {
                 elevation = CardDefaults.cardElevation(4.dp)
             ) {
                 Column {
-                    // Header with gradient
+                    // Header with gradient — bosilganda ochiladi/yopiladi
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -242,7 +245,7 @@ fun RecommendationContent(recommendation: String) {
                             Text(emoji, fontSize = 20.sp)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                title,
+                                section.title,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
                                 fontSize = 16.sp
@@ -258,7 +261,7 @@ fun RecommendationContent(recommendation: String) {
                         )
                     }
 
-                    // Content
+                    // Content — dropdown ichida
                     AnimatedVisibility(visible = expandedSections.contains(index)) {
                         Column(
                             modifier = Modifier.padding(
@@ -267,18 +270,22 @@ fun RecommendationContent(recommendation: String) {
                                 top = 12.dp,
                                 bottom = 16.dp
                             ),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            content.lines().filter { it.isNotBlank() }.forEach { line ->
-                                Row(verticalAlignment = Alignment.Top) {
+                            section.items.forEach { item ->
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Text(
                                         "•",
                                         color = Blue,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(end = 8.dp, top = 2.dp)
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.padding(end = 10.dp, top = 1.dp)
                                     )
                                     Text(
-                                        line.trimStart('-', ' ', '•', '*'),
+                                        buildStyledText(item),
                                         fontSize = 15.sp,
                                         lineHeight = 22.sp,
                                         color = Color(0xFF333333)
@@ -293,29 +300,89 @@ fun RecommendationContent(recommendation: String) {
     }
 }
 
-private fun parseRecommendation(text: String): List<Pair<String, String>> {
+/**
+ * **bold** matn → AnnotatedString bilan bold qilib ko'rsatish
+ */
+@Composable
+fun buildStyledText(text: String) = buildAnnotatedString {
+    var remaining = text
+    while (remaining.contains("**")) {
+        val start = remaining.indexOf("**")
+        // Oddiy matn
+        append(remaining.substring(0, start))
+        remaining = remaining.substring(start + 2)
+
+        val end = remaining.indexOf("**")
+        if (end >= 0) {
+            // Bold matn
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))) {
+                append(remaining.substring(0, end))
+            }
+            remaining = remaining.substring(end + 2)
+        } else {
+            // Yopilmagan ** — oddiy matn
+            append("**")
+        }
+    }
+    append(remaining)
+}
+
+data class RecommendationSection(
+    val title: String,
+    val items: List<String>
+)
+
+/**
+ * Gemini javobini sectionlarga bo'lish.
+ * Faqat "1. **Title**" formatdagi qatorlar section title.
+ * Qolgan barcha qatorlar (jumladan "- **Mashq 1:** ...") content.
+ */
+private fun parseRecommendation(text: String): List<RecommendationSection> {
     val lines = text.split("\n")
-    val sections = mutableListOf<Pair<String, String>>()
+    val sections = mutableListOf<RecommendationSection>()
     var currentTitle = ""
-    var currentContent = StringBuilder()
+    val currentItems = mutableListOf<String>()
+
+    // Regex: "1. " yoki "1. **Title**" — raqam + nuqta bilan boshlanadi
+    val sectionTitleRegex = Regex("^\\d+\\.\\s+.*")
 
     for (line in lines) {
-        if (line.matches(Regex("^\\d+\\..*")) || line.contains("**")) {
+        val trimmedLine = line.trim()
+        if (trimmedLine.isEmpty()) continue
+
+        if (sectionTitleRegex.matches(trimmedLine)) {
+            // Avvalgi section'ni saqlash
             if (currentTitle.isNotEmpty()) {
-                sections.add(currentTitle to currentContent.toString())
-                currentContent = StringBuilder()
+                sections.add(RecommendationSection(currentTitle, currentItems.toList()))
+                currentItems.clear()
             }
-            currentTitle = line
+            // Yangi section title
+            currentTitle = trimmedLine
                 .replace(Regex("^\\d+\\.\\s*"), "")
                 .replace("**", "")
                 .trim()
-        } else if (line.isNotBlank() && currentTitle.isNotEmpty()) {
-            currentContent.appendLine(line.trim())
+        } else if (currentTitle.isNotEmpty()) {
+            // Content item — "-" yoki "•" bilan boshlanishi mumkin
+            val cleanedItem = trimmedLine
+                .trimStart('-', '•', '*', ' ')
+                .trim()
+            if (cleanedItem.isNotEmpty()) {
+                currentItems.add(cleanedItem)
+            }
         }
     }
 
+    // Oxirgi section
     if (currentTitle.isNotEmpty()) {
-        sections.add(currentTitle to currentContent.toString())
+        sections.add(RecommendationSection(currentTitle, currentItems.toList()))
+    }
+
+    // Agar hech qanday section topilmasa — hamma narsani bitta section qilish
+    if (sections.isEmpty() && text.isNotBlank()) {
+        sections.add(RecommendationSection(
+            "Tavsiyalar",
+            text.split("\n").filter { it.trim().isNotEmpty() }
+        ))
     }
 
     return sections

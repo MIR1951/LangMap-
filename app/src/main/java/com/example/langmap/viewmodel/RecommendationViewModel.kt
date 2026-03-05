@@ -38,6 +38,7 @@ class RecommendationViewModel : ViewModel() {
     private var lastRequestTime: Long? = null
     private val minimumRequestInterval = 10_000L // 10 seconds
     private var isRequestInProgress = false
+    private var hasFetched = false
 
     private val db = FirebaseFirestore.getInstance()
 
@@ -50,9 +51,9 @@ class RecommendationViewModel : ViewModel() {
     fun fetchRecommendation(forceRefresh: Boolean = false) {
         Log.d(TAG, "========== fetchRecommendation() BOSHLANDI (force=$forceRefresh) ==========")
 
-        // Agar cache'da bor va force emas — qayta so'rov yubormaslik
-        if (!forceRefresh && recommendation != null) {
-            Log.d(TAG, "📦 Cache'dan foydalanilmoqda (${recommendation!!.length} belgi)")
+        // Agar allaqachon yuklangan va force emas — hech narsa qilmasin
+        if (!forceRefresh && hasFetched) {
+            Log.d(TAG, "📦 Cache'dan foydalanilmoqda — hech qanday so'rov yuborilmaydi")
             return
         }
 
@@ -286,6 +287,7 @@ class RecommendationViewModel : ViewModel() {
                         Log.d(TAG, "✅✅✅ TAVSIYA MUVAFFAQIYATLI OLINDI!")
                         isLoading = false
                         recommendation = text.trim()
+                        hasFetched = true
                     } else {
                         Log.e(TAG, "❌ text = null — javob formati noto'g'ri")
                         Log.e(TAG, "📄 Full response: $responseBody")

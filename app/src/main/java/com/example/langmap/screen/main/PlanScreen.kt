@@ -1,5 +1,6 @@
 package com.example.langmap.screen.main
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -36,7 +37,27 @@ fun PlanScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Reja") })
+            TopAppBar(
+                title = { Text("Reja") },
+                actions = {
+                    AnimatedVisibility(
+                        visible = viewModel.hasUnsavedChanges,
+                        enter = fadeIn() + slideInHorizontally { it },
+                        exit = fadeOut() + slideOutHorizontally { it }
+                    ) {
+                        TextButton(
+                            onClick = { viewModel.saveChanges() }
+                        ) {
+                            Text(
+                                "💾 Saqlash",
+                                color = Green,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
+                }
+            )
         },
         modifier = modifier
     ) { padding ->
