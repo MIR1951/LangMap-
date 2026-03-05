@@ -33,7 +33,6 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     var userName by remember { mutableStateOf("") }
-    var isFirstAppear by remember { mutableStateOf(true) }
 
     // Foydalanuvchi ismini olish
     LaunchedEffect(Unit) {
@@ -44,10 +43,8 @@ fun HomeScreen(
                     userName = doc.getString("userName") ?: ""
                 }
         }
-        if (isFirstAppear) {
-            viewModel.fetchRecommendation()
-            isFirstAppear = false
-        }
+        // Cache'dan foydalanadi, API'ga qayta so'rov yubormaslik
+        viewModel.fetchRecommendation()
     }
 
     Scaffold(
@@ -139,7 +136,7 @@ fun HomeScreen(
 
             // Yangilash tugmasi
             Button(
-                onClick = { viewModel.fetchRecommendation() },
+                onClick = { viewModel.fetchRecommendation(forceRefresh = true) },
                 enabled = !viewModel.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()

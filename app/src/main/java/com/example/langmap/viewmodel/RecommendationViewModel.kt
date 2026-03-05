@@ -47,8 +47,14 @@ class RecommendationViewModel : ViewModel() {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    fun fetchRecommendation() {
-        Log.d(TAG, "========== fetchRecommendation() BOSHLANDI ==========")
+    fun fetchRecommendation(forceRefresh: Boolean = false) {
+        Log.d(TAG, "========== fetchRecommendation() BOSHLANDI (force=$forceRefresh) ==========")
+
+        // Agar cache'da bor va force emas — qayta so'rov yubormaslik
+        if (!forceRefresh && recommendation != null) {
+            Log.d(TAG, "📦 Cache'dan foydalanilmoqda (${recommendation!!.length} belgi)")
+            return
+        }
 
         if (isRequestInProgress) {
             Log.w(TAG, "❌ So'rov allaqachon amalga oshirilmoqda")

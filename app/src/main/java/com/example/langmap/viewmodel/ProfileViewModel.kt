@@ -83,8 +83,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     if (learningMethod.isNotEmpty()) goals.add("📖 $learningMethod")
                     learningGoals = goals
 
-                    // Statistika — subcollection'dan
-                    loadStats(userId)
+                    // Real statistika — stats + achievements + dailyTasks
+                    loadRealStats(userId)
                 }
             }
             .addOnFailureListener {
@@ -92,7 +92,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             }
     }
 
-    private fun loadStats(userId: String) {
+    private fun loadRealStats(userId: String) {
+        // 1. Stats/summary dan olish
         db.collection("users").document(userId)
             .collection("stats").document("summary").get()
             .addOnSuccessListener { doc ->
@@ -100,9 +101,51 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     learnedWords = (doc.getLong("learnedWords") ?: 0).toInt()
                     completedLessons = (doc.getLong("completedLessons") ?: 0).toInt()
                     streak = (doc.getLong("streak") ?: 0).toInt()
-                    achievementsCount = (doc.getLong("achievementsCount") ?: 0).toInt()
                 }
-                // Yangi foydalanuvchi uchun 0 qoladi — bu to'g'ri
+            }
+
+        // 2. Haqiqiy achievements count
+        db.collection("users").document(userId)
+            .collection("achievements").get()
+            .addOnSuccessListener { documents ->
+                achievementsCount = documents.count { doc ->
+                    doc.getBoolean("isUnlocked") == true
+                }
+            }
+
+        // 3. Jami bajarilgan vazifalar (barcha kunlardan)
+        db.collection("users").document(userId)
+            .collection("dailyTasks").get()
+            .addOnSuccessListener { documents ->
+                var totalCompleted = 0
+                var totalWords = 0
+                var daysWithTasks = 0
+
+                documents.forEach { doc ->
+                    @Suppress("UNCHECKED_CAST")
+                    val tasksData = doc.get("tasks") as? List<Map<String, Any>>
+                    if (tasksData != null) {
+                        val dayCompleted = tasksData.count { it["isCompleted"] == true }
+                        totalCompleted += dayCompleted
+                        totalWords += dayCompleted * 5
+                        if (dayCompleted > 0) daysWithTasks++
+                    }
+                }
+
+                completedLessons = totalCompleted
+                learnedWords = totalWords
+                streak = daysWithTasks
+
+                // Stats/summary'ni yangilash
+                db.collection("users").document(userId)
+                    .collection("stats").document("summary")
+                    .set(mapOf(
+                        "completedLessons" to totalCompleted,
+                        "learnedWords" to totalWords,
+                        "streak" to daysWithTasks,
+                        "achievementsCount" to achievementsCount,
+                        "lastUpdated" to com.google.firebase.Timestamp.now()
+                    ))
             }
     }
 
@@ -116,23 +159,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         try {
             auth.signOut()
             clearPrefs()
+            // ViewModel holatini tozalash
+            userName = ""
+            email = ""
+            userLevel = "Yangi o'rganuvchi"
+            learningGoals = emptyList()
+            interests = emptyList()
+            learningMethod = ""
+            learnedWords = 0
+            completedLessons = 0
+            streak = 0
+            achievementsCount = 0
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
     private fun clearPrefs() {
-        val editor = prefs.edit()
-        val keysToRemove = listOf(
-            "selectedAge", "selectedLanguage", "selectedProficiency",
-            "selectedGoal", "selectedGoalLevel", "selectedLastLanguageTime",
-            "selectedLearningMethod", "selectedExperience", "selectedUnderstandingLevel",
-            "selectedSkill", "userName", "selectedAnswer12", "selectedAnswer13",
-            "selectedAnswer14", "selectedAnswer15", "selectedAnswer16", "selectedAnswer17",
-            "selectedInterests", "selectedEvents", "selectedDuration",
-            "selectedStartTime", "pageIndex", "didCompleteOnboarding"
-        )
-        keysToRemove.forEach { editor.remove(it) }
-        editor.apply()
+        // Barcha SharedPreferences'ni tozalash
+        prefs.edit().clear().apply()
     }
 }

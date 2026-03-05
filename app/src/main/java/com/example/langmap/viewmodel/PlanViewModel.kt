@@ -175,28 +175,32 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateStats(userId: String) {
-        val completedCount = todayTasks.count { it.isCompleted }
-
+        // Barcha kunlardan jami statistikani hisoblash
         db.collection("users").document(userId)
-            .collection("stats").document("summary").get()
-            .addOnSuccessListener { doc ->
-                val currentLessons = if (doc.exists()) {
-                    (doc.getLong("completedLessons") ?: 0).toInt()
-                } else 0
+            .collection("dailyTasks").get()
+            .addOnSuccessListener { documents ->
+                var totalCompleted = 0
+                var daysWithTasks = 0
 
-                val currentStreak = if (doc.exists()) {
-                    (doc.getLong("streak") ?: 0).toInt()
-                } else 0
+                documents.forEach { doc ->
+                    @Suppress("UNCHECKED_CAST")
+                    val tasksData = doc.get("tasks") as? List<Map<String, Any>>
+                    if (tasksData != null) {
+                        val dayCompleted = tasksData.count { it["isCompleted"] == true }
+                        totalCompleted += dayCompleted
+                        if (dayCompleted > 0) daysWithTasks++
+                    }
+                }
 
-                val allCompleted = todayTasks.all { it.isCompleted } && todayTasks.isNotEmpty()
+                val unlockedCount = achievements.count { it.isUnlocked }
 
                 db.collection("users").document(userId)
                     .collection("stats").document("summary")
                     .set(mapOf(
-                        "completedLessons" to completedCount,
-                        "streak" to if (allCompleted) currentStreak + 1 else currentStreak,
-                        "learnedWords" to completedCount * 5,
-                        "achievementsCount" to achievements.count { it.isUnlocked },
+                        "completedLessons" to totalCompleted,
+                        "learnedWords" to totalCompleted * 5,
+                        "streak" to daysWithTasks,
+                        "achievementsCount" to unlockedCount,
                         "lastUpdated" to com.google.firebase.Timestamp.now()
                     ))
             }
