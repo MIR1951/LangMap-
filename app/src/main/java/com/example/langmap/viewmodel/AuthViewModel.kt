@@ -197,6 +197,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         db.collection("users").document(currentUser.uid)
                             .set(userData)
                             .addOnSuccessListener {
+                                // Stats, progress, achievements subcollectionlarni yaratish
+                                initializeUserData(currentUser.uid)
+
                                 prefs.edit().putBoolean("didCompleteOnboarding", true).apply()
                                 isAuthenticated = true
                                 onSuccess()
@@ -231,5 +234,42 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() {
         errorMessage = null
+    }
+
+    /**
+     * Yangi foydalanuvchi uchun stats, progress, achievements subcollectionlarni yaratish
+     */
+    private fun initializeUserData(userId: String) {
+        // Stats
+        db.collection("users").document(userId)
+            .collection("stats").document("summary")
+            .set(mapOf(
+                "learnedWords" to 0,
+                "completedLessons" to 0,
+                "streak" to 0,
+                "achievementsCount" to 1, // "Birinchi qadam" — doim ochiq
+                "lastUpdated" to com.google.firebase.Timestamp.now()
+            ))
+
+        // Weekly progress
+        db.collection("users").document(userId)
+            .collection("progress").document("weekly")
+            .set(mapOf("days" to listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)))
+
+        // Default achievements
+        val achievements = listOf(
+            mapOf("id" to "first_step", "title" to "Birinchi qadam", "description" to "Ilovaga ro'yxatdan o'tish", "iconName" to "star", "isUnlocked" to true),
+            mapOf("id" to "first_task", "title" to "Birinchi vazifa", "description" to "Birinchi vazifani bajarish", "iconName" to "check_circle", "isUnlocked" to false),
+            mapOf("id" to "daily_star", "title" to "Kun yulduzi", "description" to "Barcha kunlik vazifalarni bajarish", "iconName" to "star", "isUnlocked" to false),
+            mapOf("id" to "word_master", "title" to "So'z ustasi", "description" to "3 ta vazifani bajarish", "iconName" to "book", "isUnlocked" to false),
+            mapOf("id" to "grammar_guru", "title" to "Grammar guru", "description" to "Grammar vazifasini bajarish", "iconName" to "check_circle", "isUnlocked" to false)
+        )
+
+        achievements.forEach { achievement ->
+            val id = achievement["id"] as String
+            db.collection("users").document(userId)
+                .collection("achievements").document(id)
+                .set(achievement)
+        }
     }
 }

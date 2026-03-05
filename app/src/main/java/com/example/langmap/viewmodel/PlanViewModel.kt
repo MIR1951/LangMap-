@@ -2,6 +2,7 @@ package com.example.langmap.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,10 +11,13 @@ import com.example.langmap.model.Achievement
 import com.example.langmap.model.LearningTask
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import java.text.SimpleDateFormat
+import java.util.*
 
 class PlanViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("langmap_prefs", Context.MODE_PRIVATE)
     private val db = FirebaseFirestore.getInstance()
+    private val TAG = "LANGMAP"
 
     var weeklyProgress by mutableStateOf(listOf<Double>())
         private set
@@ -25,6 +29,12 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var userLevel by mutableStateOf("")
+        private set
+
+    var completedTasksToday by mutableStateOf(0)
+        private set
+
+    var totalTasksToday by mutableStateOf(0)
         private set
 
     init {
@@ -47,18 +57,15 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     val proficiency = data["proficiency"] as? String ?: "Boshlang'ich"
-                    val goal = data["goal"] as? String ?: ""
-                    val duration = data["duration"] as? String ?: ""
-                    val skill = data["skill"] as? String ?: ""
                     userLevel = proficiency
 
-                    // Foydalanuvchining haqiqiy progressini Firestore'dan o'qish
+                    // Bugungi vazifalarni Firestore'dan olish
+                    loadTodayTasks(userId, proficiency)
+
+                    // Haftalik progressni olish
                     loadProgress(userId)
 
-                    // Foydalanuvchi darajasiga mos vazifalar
-                    todayTasks = generateTasksForLevel(proficiency, goal, skill)
-
-                    // Yutuqlarni Firestore'dan o'qish
+                    // Yutuqlarni olish
                     loadAchievements(userId)
                 } else {
                     loadDefaults()
@@ -69,21 +76,188 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    private fun loadTodayTasks(userId: String, level: String) {
+        val todayKey = getTodayKey()
+
+        db.collection("users").document(userId)
+            .collection("dailyTasks").document(todayKey).get()
+            .addOnSuccessListener { doc ->
+                if (doc.exists()) {
+                    // Bugungi vazifalar allaqachon yaratilgan — o'qish
+                    @Suppress("UNCHECKED_CAST")
+                    val tasksData = doc.get("tasks") as? List<Map<String, Any>>
+                    if (tasksData != null) {
+                        todayTasks = tasksData.map { taskMap ->
+                            LearningTask(
+                                id = taskMap["id"] as? String ?: "",
+                                title = taskMap["title"] as? String ?: "",
+                                description = taskMap["description"] as? String ?: "",
+                                duration = taskMap["duration"] as? String ?: "",
+                                isCompleted = taskMap["isCompleted"] as? Boolean ?: false
+                            )
+                        }
+                        updateTaskCounts()
+                    }
+                } else {
+                    // Bugungi vazifalar yo'q — yaratish
+                    val tasks = generateTasksForLevel(level)
+                    todayTasks = tasks
+                    updateTaskCounts()
+                    saveTodayTasks(userId, todayKey, tasks)
+                }
+            }
+            .addOnFailureListener {
+                todayTasks = generateTasksForLevel(level)
+                updateTaskCounts()
+            }
+    }
+
+    fun toggleTask(taskId: String) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val todayKey = getTodayKey()
+
+        // Lokalni yangilash
+        todayTasks = todayTasks.map { task ->
+            if (task.id == taskId) task.copy(isCompleted = !task.isCompleted)
+            else task
+        }
+        updateTaskCounts()
+
+        // Firestore'da saqlash
+        saveTodayTasks(userId, todayKey, todayTasks)
+
+        // Haftalik progressni yangilash
+        updateTodayProgress(userId)
+
+        // Stats yangilash
+        updateStats(userId)
+
+        // Yutuqlarni tekshirish
+        checkAchievements(userId)
+    }
+
+    private fun saveTodayTasks(userId: String, todayKey: String, tasks: List<LearningTask>) {
+        val tasksData = tasks.map { task ->
+            mapOf(
+                "id" to task.id,
+                "title" to task.title,
+                "description" to task.description,
+                "duration" to task.duration,
+                "isCompleted" to task.isCompleted
+            )
+        }
+
+        db.collection("users").document(userId)
+            .collection("dailyTasks").document(todayKey)
+            .set(mapOf("tasks" to tasksData, "date" to todayKey))
+            .addOnSuccessListener {
+                Log.d(TAG, "✅ Bugungi vazifalar saqlandi: $todayKey")
+            }
+    }
+
+    private fun updateTodayProgress(userId: String) {
+        val completed = todayTasks.count { it.isCompleted }
+        val total = todayTasks.size
+        val progress = if (total > 0) completed.toDouble() / total else 0.0
+
+        // Haftalik progress arrayda bugungi kunni yangilash
+        val todayIndex = getDayOfWeekIndex()
+        val updatedProgress = weeklyProgress.toMutableList()
+        if (todayIndex < updatedProgress.size) {
+            updatedProgress[todayIndex] = progress
+            weeklyProgress = updatedProgress
+        }
+
+        // Firestore'da saqlash
+        db.collection("users").document(userId)
+            .collection("progress").document("weekly")
+            .set(mapOf("days" to weeklyProgress))
+    }
+
+    private fun updateStats(userId: String) {
+        val completedCount = todayTasks.count { it.isCompleted }
+
+        db.collection("users").document(userId)
+            .collection("stats").document("summary").get()
+            .addOnSuccessListener { doc ->
+                val currentLessons = if (doc.exists()) {
+                    (doc.getLong("completedLessons") ?: 0).toInt()
+                } else 0
+
+                val currentStreak = if (doc.exists()) {
+                    (doc.getLong("streak") ?: 0).toInt()
+                } else 0
+
+                val allCompleted = todayTasks.all { it.isCompleted } && todayTasks.isNotEmpty()
+
+                db.collection("users").document(userId)
+                    .collection("stats").document("summary")
+                    .set(mapOf(
+                        "completedLessons" to completedCount,
+                        "streak" to if (allCompleted) currentStreak + 1 else currentStreak,
+                        "learnedWords" to completedCount * 5,
+                        "achievementsCount" to achievements.count { it.isUnlocked },
+                        "lastUpdated" to com.google.firebase.Timestamp.now()
+                    ))
+            }
+    }
+
+    private fun checkAchievements(userId: String) {
+        val completedCount = todayTasks.count { it.isCompleted }
+        val allCompleted = todayTasks.all { it.isCompleted } && todayTasks.isNotEmpty()
+
+        val updatedAchievements = achievements.map { achievement ->
+            when (achievement.id) {
+                "first_step" -> achievement.copy(isUnlocked = true) // Doim ochiq
+                "first_task" -> achievement.copy(isUnlocked = completedCount >= 1)
+                "daily_star" -> achievement.copy(isUnlocked = allCompleted)
+                "word_master" -> achievement.copy(isUnlocked = completedCount >= 3)
+                "grammar_guru" -> achievement.copy(isUnlocked = completedCount >= 2)
+                else -> achievement
+            }
+        }
+
+        if (updatedAchievements != achievements) {
+            achievements = updatedAchievements
+
+            // Firestore'da saqlash
+            updatedAchievements.forEach { achievement ->
+                db.collection("users").document(userId)
+                    .collection("achievements").document(achievement.id)
+                    .set(mapOf(
+                        "title" to achievement.title,
+                        "description" to achievement.description,
+                        "iconName" to achievement.iconName,
+                        "isUnlocked" to achievement.isUnlocked
+                    ))
+            }
+        }
+    }
+
+    private fun updateTaskCounts() {
+        completedTasksToday = todayTasks.count { it.isCompleted }
+        totalTasksToday = todayTasks.size
+    }
+
     private fun loadProgress(userId: String) {
         db.collection("users").document(userId)
             .collection("progress").document("weekly").get()
             .addOnSuccessListener { doc ->
                 if (doc.exists()) {
                     @Suppress("UNCHECKED_CAST")
-                    val days = doc.get("days") as? List<Double>
-                    weeklyProgress = days ?: listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    val days = doc.get("days") as? List<*>
+                    weeklyProgress = days?.map { (it as? Number)?.toDouble() ?: 0.0 }
+                        ?: List(7) { 0.0 }
                 } else {
-                    // Yangi foydalanuvchi — progress yo'q
-                    weeklyProgress = listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    weeklyProgress = List(7) { 0.0 }
+                    // Yaratish
+                    db.collection("users").document(userId)
+                        .collection("progress").document("weekly")
+                        .set(mapOf("days" to weeklyProgress))
                 }
             }
             .addOnFailureListener {
-                weeklyProgress = listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                weeklyProgress = List(7) { 0.0 }
             }
     }
 
@@ -94,6 +268,7 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
                 if (!documents.isEmpty) {
                     achievements = documents.map { doc ->
                         Achievement(
+                            id = doc.id,
                             title = doc.getString("title") ?: "",
                             description = doc.getString("description") ?: "",
                             iconName = doc.getString("iconName") ?: "star",
@@ -101,8 +276,20 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 } else {
-                    // Default yutuqlar
-                    achievements = getDefaultAchievements()
+                    // Yangi foydalanuvchi — default yutuqlarni yaratish
+                    val defaults = getDefaultAchievements()
+                    achievements = defaults
+
+                    defaults.forEach { achievement ->
+                        db.collection("users").document(userId)
+                            .collection("achievements").document(achievement.id)
+                            .set(mapOf(
+                                "title" to achievement.title,
+                                "description" to achievement.description,
+                                "iconName" to achievement.iconName,
+                                "isUnlocked" to achievement.isUnlocked
+                            ))
+                    }
                 }
             }
             .addOnFailureListener {
@@ -110,22 +297,25 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    private fun generateTasksForLevel(level: String, goal: String, skill: String): List<LearningTask> {
+    private fun generateTasksForLevel(level: String): List<LearningTask> {
         return when {
             level.contains("Boshlang'ich", ignoreCase = true) -> listOf(
                 LearningTask(
+                    id = "task_vocab_basic",
                     title = "Asosiy so'zlar",
                     description = "Kundalik 15 ta yangi so'z o'rganish",
                     duration = "15 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_grammar_basic",
                     title = "Grammar asoslari",
                     description = "Present Simple tuzilishi",
                     duration = "20 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_listening_basic",
                     title = "Tinglash mashqi",
                     description = "Oddiy dialog tinglash va tushunish",
                     duration = "10 min",
@@ -134,24 +324,28 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
             )
             level.contains("O'rta", ignoreCase = true) || level.contains("Intermediate", ignoreCase = true) -> listOf(
                 LearningTask(
+                    id = "task_vocab_inter",
                     title = "So'z boyligini kengaytirish",
                     description = "Mavzuli 20 ta yangi so'z",
                     duration = "20 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_grammar_inter",
                     title = "Grammar chuqurlash",
                     description = "Perfect tenses mashqlari",
                     duration = "25 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_speaking_inter",
                     title = "Speaking mashqi",
                     description = "Mavzu bo'yicha gapirish mashqi",
                     duration = "15 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_reading_inter",
                     title = "O'qish mashqi",
                     description = "Qisqa maqola o'qish va savollarga javob",
                     duration = "15 min",
@@ -160,18 +354,21 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
             )
             else -> listOf(
                 LearningTask(
+                    id = "task_vocab_adv",
                     title = "Advanced vocabulary",
                     description = "Idiomalar va phrasal verblar",
                     duration = "20 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_writing_adv",
                     title = "Academic writing",
                     description = "Essay yozish mashqi",
                     duration = "30 min",
                     isCompleted = false
                 ),
                 LearningTask(
+                    id = "task_debate_adv",
                     title = "Debate practice",
                     description = "Mavzu bo'yicha fikr bildirish",
                     duration = "20 min",
@@ -184,20 +381,37 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     private fun getDefaultAchievements(): List<Achievement> {
         return listOf(
             Achievement(
+                id = "first_step",
                 title = "Birinchi qadam",
                 description = "Ilovaga ro'yxatdan o'tish",
                 iconName = "star",
                 isUnlocked = true
             ),
             Achievement(
+                id = "first_task",
+                title = "Birinchi vazifa",
+                description = "Birinchi vazifani bajarish",
+                iconName = "check_circle",
+                isUnlocked = false
+            ),
+            Achievement(
+                id = "daily_star",
+                title = "Kun yulduzi",
+                description = "Barcha kunlik vazifalarni bajarish",
+                iconName = "star",
+                isUnlocked = false
+            ),
+            Achievement(
+                id = "word_master",
                 title = "So'z ustasi",
-                description = "100 ta so'z o'rganish",
+                description = "3 ta vazifani bajarish",
                 iconName = "book",
                 isUnlocked = false
             ),
             Achievement(
+                id = "grammar_guru",
                 title = "Grammar guru",
-                description = "10 ta grammar darsini tugatish",
+                description = "Grammar vazifasini bajarish",
                 iconName = "check_circle",
                 isUnlocked = false
             )
@@ -205,8 +419,29 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadDefaults() {
-        weeklyProgress = listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        todayTasks = generateTasksForLevel("Boshlang'ich", "", "")
+        weeklyProgress = List(7) { 0.0 }
+        todayTasks = generateTasksForLevel("Boshlang'ich")
         achievements = getDefaultAchievements()
+        updateTaskCounts()
+    }
+
+    private fun getTodayKey(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        return sdf.format(Date())
+    }
+
+    private fun getDayOfWeekIndex(): Int {
+        val cal = Calendar.getInstance()
+        // Dushanba = 0, Yakshanba = 6
+        return when (cal.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> 0
+            Calendar.TUESDAY -> 1
+            Calendar.WEDNESDAY -> 2
+            Calendar.THURSDAY -> 3
+            Calendar.FRIDAY -> 4
+            Calendar.SATURDAY -> 5
+            Calendar.SUNDAY -> 6
+            else -> 0
+        }
     }
 }
