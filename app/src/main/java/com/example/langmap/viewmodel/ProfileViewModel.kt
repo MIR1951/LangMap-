@@ -15,10 +15,13 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
-    var userLevel by mutableStateOf("B1 - Intermediate")
+    var userLevel by mutableStateOf("Yangi o'rganuvchi")
         private set
 
     var userName by mutableStateOf("")
+        private set
+
+    var email by mutableStateOf("")
         private set
 
     var learningGoals by mutableStateOf(listOf<String>())
@@ -36,62 +39,77 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     var achievementsCount by mutableIntStateOf(0)
         private set
 
+    var interests by mutableStateOf(listOf<String>())
+        private set
+
+    var learningMethod by mutableStateOf("")
+        private set
+
     init {
         fetchData()
     }
 
     fun fetchData() {
-        // Avval SharedPreferences'dan o'qish
-        loadFromPrefs()
-
-        // Keyin Firestore'dan yangilash (agar ma'lumot bo'sh bo'lsa yoki har doim)
         val userId = auth.currentUser?.uid
-        if (userId != null) {
-            db.collection("users").document(userId).get()
-                .addOnSuccessListener { document ->
-                    if (document != null && document.exists()) {
-                        val data = document.data ?: return@addOnSuccessListener
-                        
-                        userName = data["userName"] as? String ?: userName
-                        
-                        val selectedLevel = data["proficiency"] as? String ?: ""
-                        if (selectedLevel.isNotEmpty()) {
-                            userLevel = selectedLevel
-                        }
-
-                        val learningGoal = data["goal"] as? String ?: ""
-                        val studyTime = data["duration"] as? String ?: ""
-
-                        val goals = mutableListOf<String>()
-                        if (learningGoal.isNotEmpty()) goals.add(learningGoal)
-                        if (studyTime.isNotEmpty()) goals.add("$studyTime vaqt davomida o'rganish")
-                        goals.add("Kunlik 10 ta yangi so'z o'rganish")
-                        goals.add("Speaking mashqlarini bajarish")
-                        learningGoals = goals
-                    }
-                }
+        if (userId == null) {
+            loadFromPrefs()
+            return
         }
+
+        email = auth.currentUser?.email ?: ""
+
+        // Firestore'dan o'qish
+        db.collection("users").document(userId).get()
+            .addOnSuccessListener { document ->
+                if (document != null && document.exists()) {
+                    val data = document.data ?: return@addOnSuccessListener
+
+                    userName = data["userName"] as? String ?: ""
+                    userLevel = data["proficiency"] as? String ?: "Yangi o'rganuvchi"
+                    learningMethod = data["learningMethod"] as? String ?: ""
+
+                    @Suppress("UNCHECKED_CAST")
+                    interests = (data["interests"] as? List<String>) ?: emptyList()
+
+                    // Maqsadlar
+                    val goal = data["goal"] as? String ?: ""
+                    val duration = data["duration"] as? String ?: ""
+                    val goalLevel = data["goalLevel"] as? String ?: ""
+
+                    val goals = mutableListOf<String>()
+                    if (goal.isNotEmpty()) goals.add("🎯 $goal")
+                    if (goalLevel.isNotEmpty()) goals.add("📈 $goalLevel")
+                    if (duration.isNotEmpty()) goals.add("⏰ Kunlik $duration")
+                    if (learningMethod.isNotEmpty()) goals.add("📖 $learningMethod")
+                    learningGoals = goals
+
+                    // Statistika — subcollection'dan
+                    loadStats(userId)
+                }
+            }
+            .addOnFailureListener {
+                loadFromPrefs()
+            }
+    }
+
+    private fun loadStats(userId: String) {
+        db.collection("users").document(userId)
+            .collection("stats").document("summary").get()
+            .addOnSuccessListener { doc ->
+                if (doc.exists()) {
+                    learnedWords = (doc.getLong("learnedWords") ?: 0).toInt()
+                    completedLessons = (doc.getLong("completedLessons") ?: 0).toInt()
+                    streak = (doc.getLong("streak") ?: 0).toInt()
+                    achievementsCount = (doc.getLong("achievementsCount") ?: 0).toInt()
+                }
+                // Yangi foydalanuvchi uchun 0 qoladi — bu to'g'ri
+            }
     }
 
     private fun loadFromPrefs() {
         userName = prefs.getString("userName", "") ?: ""
-
         val selectedLevel = prefs.getString("selectedProficiency", "") ?: ""
         userLevel = if (selectedLevel.isEmpty()) "Yangi o'rganuvchi" else selectedLevel
-
-        val learningGoal = prefs.getString("selectedGoal", "") ?: ""
-        val studyTime = prefs.getString("selectedDuration", "") ?: ""
-
-        val goals = mutableListOf<String>()
-        if (learningGoal.isNotEmpty()) goals.add(learningGoal)
-        if (studyTime.isNotEmpty()) goals.add("$studyTime vaqt davomida o'rganish")
-        goals.add("Kunlik 10 ta yangi so'z o'rganish")
-        goals.add("Speaking mashqlarini bajarish")
-        learningGoals = goals
-
-        completedLessons = prefs.getInt("completedLessons", 0)
-        streak = prefs.getInt("streak", 0)
-        achievementsCount = prefs.getInt("achievements", 0)
     }
 
     fun logout() {

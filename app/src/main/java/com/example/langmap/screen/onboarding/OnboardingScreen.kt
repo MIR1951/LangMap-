@@ -63,7 +63,6 @@ fun OnboardingScreen(
             15 -> OnboardingPage16(viewModel)
             16 -> OnboardingPage17(viewModel)
             17 -> OnboardingPage18(viewModel)
-            else -> GenericContinuePage(viewModel, onFinish)
         }
     }
 }
@@ -969,31 +968,3 @@ fun OnboardingPage18(viewModel: OnboardingViewModel) {
     }
 }
 
-@Composable
-fun GenericContinuePage(viewModel: OnboardingViewModel, onFinish: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        OnboardingHeader(viewModel.pageIndex, viewModel.totalPages, viewModel::onBack)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                "Davom etish uchun tugmani bosing",
-                fontSize = 20.sp,
-                textAlign = TextAlign.Center,
-                color = Color.Gray
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-            ContinueButton {
-                if (viewModel.pageIndex >= viewModel.totalPages - 1) {
-                    viewModel.finishOnboarding()
-                } else {
-                    viewModel.onNext()
-                }
-            }
-        }
-    }
-}
