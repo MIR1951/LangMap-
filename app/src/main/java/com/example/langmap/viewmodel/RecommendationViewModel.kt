@@ -89,6 +89,8 @@ class RecommendationViewModel : ViewModel() {
                     val language = data["language"] as? String ?: ""
                     val experience = data["experience"] as? String ?: ""
                     val learningMethod = data["learningMethod"] as? String ?: ""
+                    val duration = data["duration"] as? String ?: ""
+                    val skill = data["skill"] as? String ?: ""
 
                     val prompt = """
                         Foydalanuvchi haqida ma'lumotlar:
@@ -99,6 +101,8 @@ class RecommendationViewModel : ViewModel() {
                         Til: $language
                         Tajriba: $experience
                         O'rganish usuli: $learningMethod
+                        Kundalik vaqt: $duration
+                        Ko'nikma: $skill
 
                         Ushbu foydalanuvchiga ingliz tili o'rganish bo'yicha shaxsiylashtirilgan tavsiya bering.
                         Har bir tavsiya quyidagi formatda bo'lsin:
@@ -126,7 +130,7 @@ class RecommendationViewModel : ViewModel() {
                         Sarlavhalarni ** belgilari orasiga oling.
                     """.trimIndent()
 
-                    makeAIRequest(prompt)
+                    makeGeminiRequest(prompt)
                 } else {
                     isLoading = false
                     isRequestInProgress = false
@@ -140,23 +144,26 @@ class RecommendationViewModel : ViewModel() {
             }
     }
 
-    private fun makeAIRequest(prompt: String) {
+    private fun makeGeminiRequest(prompt: String) {
         viewModelScope.launch {
             try {
-                val apiKey = com.example.langmap.BuildConfig.OPENAI_API_KEY
-                val url = "https://api.openai.com/v1/chat/completions"
+                val apiKey = com.example.langmap.BuildConfig.GEMINI_API_KEY
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey"
 
                 val requestBody = mapOf(
-                    "model" to "gpt-5",
-                    "messages" to listOf(
+                    "contents" to listOf(
                         mapOf(
-                            "role" to "system",
-                            "content" to "Siz ingliz tili o'qituvchisiz. Foydalanuvchilarga ingliz tilini o'rganish bo'yicha foydali va shaxsiylashtirilgan tavsiyalar berasiz."
-                        ),
-                        mapOf("role" to "user", "content" to prompt)
+                            "parts" to listOf(
+                                mapOf(
+                                    "text" to "Siz ingliz tili o'qituvchisiz. Foydalanuvchilarga ingliz tilini o'rganish bo'yicha foydali va shaxsiylashtirilgan tavsiyalar berasiz.\n\n$prompt"
+                                )
+                            )
+                        )
                     ),
-                    "temperature" to 0.7,
-                    "max_tokens" to 1000
+                    "generationConfig" to mapOf(
+                        "temperature" to 0.7,
+                        "maxOutputTokens" to 1000
+                    )
                 )
 
                 val jsonBody = Gson().toJson(requestBody)
@@ -165,9 +172,7 @@ class RecommendationViewModel : ViewModel() {
 
                 val request = Request.Builder()
                     .url(url)
-                    .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
-                    .addHeader("Cache-Control", "no-cache")
                     .post(body)
                     .build()
 
@@ -177,36 +182,45 @@ class RecommendationViewModel : ViewModel() {
 
                 isRequestInProgress = false
 
-                if (response.code == 404) {
+                if (response.code == 400) {
                     isLoading = false
-                    errorMessage = "API endpoint yoki model nomi noto'g'ri."
+                    errorMessage = "Noto'g'ri so'rov formati. API kalitni tekshiring."
+                    return@launch
+                }
+
+                if (response.code == 403) {
+                    isLoading = false
+                    errorMessage = "API kaliti yaroqsiz yoki Gemini API yoqilmagan."
                     return@launch
                 }
 
                 if (response.code == 429) {
                     isLoading = false
-                    errorMessage = "So'rovlar soni chegaradan oshib ketdi. 30 soniyadan keyin qayta urinib ko'ring."
+                    errorMessage = "So'rovlar soni chegaradan oshdi. 30 soniyadan keyin qayta urinib ko'ring."
                     lastRequestTime = System.currentTimeMillis() + 30_000
                     return@launch
                 }
 
                 if (response.code !in 200..299) {
+                    val errorBody = response.body?.string() ?: ""
                     isLoading = false
-                    errorMessage = "Server xatosi: ${response.code}"
+                    errorMessage = "Server xatosi: ${response.code} - $errorBody"
                     return@launch
                 }
 
                 val responseBody = response.body?.string()
                 if (responseBody != null) {
                     val json = Gson().fromJson(responseBody, Map::class.java) as? Map<*, *>
-                    val choices = json?.get("choices") as? List<*>
-                    val firstChoice = choices?.firstOrNull() as? Map<*, *>
-                    val message = firstChoice?.get("message") as? Map<*, *>
-                    val content = message?.get("content") as? String
+                    val candidates = json?.get("candidates") as? List<*>
+                    val firstCandidate = candidates?.firstOrNull() as? Map<*, *>
+                    val content = firstCandidate?.get("content") as? Map<*, *>
+                    val parts = content?.get("parts") as? List<*>
+                    val firstPart = parts?.firstOrNull() as? Map<*, *>
+                    val text = firstPart?.get("text") as? String
 
-                    if (content != null) {
+                    if (text != null) {
                         isLoading = false
-                        recommendation = content.trim()
+                        recommendation = text.trim()
                     } else {
                         isLoading = false
                         errorMessage = "Noto'g'ri javob formati"
@@ -220,8 +234,8 @@ class RecommendationViewModel : ViewModel() {
 
                 if (currentRetry < maxRetries) {
                     currentRetry++
-                    kotlinx.coroutines.delay(currentRetry * 10_000L)
-                    makeAIRequest(prompt)
+                    kotlinx.coroutines.delay(currentRetry * 5_000L)
+                    makeGeminiRequest(prompt)
                 } else {
                     isLoading = false
                     errorMessage = "Tarmoq ulanishi uzildi. Internet ulanishingizni tekshiring."
